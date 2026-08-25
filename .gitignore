@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.DS_Store
+
+# Raw/processed RBA text data — regenerate via scripts, don't commit
+# (RBA copyright terms permit personal/non-commercial use, not public
+# redistribution of full document text)
+data/raw/
+data/processed/*.csv
+
+# Keep the small index CSVs (just URLs/metadata, not document text)
+!data/external/minutes_index.csv
+!data/external/smp_index.csv
