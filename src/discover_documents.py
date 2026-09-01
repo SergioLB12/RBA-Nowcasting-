@@ -31,6 +31,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+from datetime import date
 
 BASE = "https://www.rba.gov.au"
 START_YEAR = 2007
@@ -40,32 +41,46 @@ SMP_MONTHS = [("feb", "02"), ("may", "05"), ("aug", "08"), ("nov", "11")]
 
 
 def discover_minutes_urls(year: int) -> list[dict]:
-    """Fetch a year's minutes index page and extract every minutes document URL."""
+    """Fetch a year's minutes index page and extract every minutes document URL.
+
+    The RBA has used two URL formats over time:
+      - New (roughly 2015 onward): {year}-{mm}-{dd}.html   e.g. 2026-05-05.html
+      - Old (roughly 2007-2014):    {dd}{mm}{year}.html     e.g. 06072010.html
+    Both are matched here.
+    """
     index_url = f"{BASE}/monetary-policy/rba-board-minutes/{year}/"
     resp = requests.get(index_url, timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.content, "html.parser")
 
-    pattern = re.compile(rf"/monetary-policy/rba-board-minutes/{year}/{year}-\d{{2}}-\d{{2}}\.html")
+    pattern_new = re.compile(rf"/monetary-policy/rba-board-minutes/{year}/{year}-\d{{2}}-\d{{2}}\.html")
+    pattern_old = re.compile(rf"/monetary-policy/rba-board-minutes/{year}/\d{{2}}\d{{2}}{year}\.html")
+
     urls = set()
     for a in soup.find_all("a", href=True):
-        if pattern.search(a["href"]):
-            full_url = a["href"] if a["href"].startswith("http") else BASE + a["href"]
+        href = a["href"]
+        if pattern_new.search(href) or pattern_old.search(href):
+            full_url = href if href.startswith("http") else BASE + href
             urls.add(full_url)
 
     return [{"type": "minutes", "year": year, "url": u} for u in sorted(urls)]
 
 
 def build_smp_urls(year: int) -> list[dict]:
-    """SMP is published on a fixed quarterly schedule — build URLs directly."""
+    """SMP is published on a fixed quarterly schedule — build URLs directly,
+    skipping quarters that haven't been published yet."""
+    today = date.today()
     rows = []
     for month_name, month_num in SMP_MONTHS:
-        # Skip future quarters beyond the current data if needed — left as-is
-        # here; filter downstream once you know the actual current date.
+        # Skip if this quarter's publication month hasn't arrived yet
+        if year > today.year or (year == today.year and int(month_num) > today.month):
+            continue
         page_url = f"{BASE}/publications/smp/{year}/{month_name}/"
         pdf_url = f"{BASE}/publications/smp/{year}/{month_name}/pdf/statement-on-monetary-policy-{year}-{month_num}.pdf"
         rows.append({"type": "smp", "year": year, "month": month_name, "page_url": page_url, "pdf_url": pdf_url})
     return rows
+
+
 
 
 def build_full_index() -> pd.DataFrame:
